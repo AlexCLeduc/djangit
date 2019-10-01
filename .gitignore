@@ -1,0 +1,8 @@
+*.pyc
+__pycache__
+*#
+*.swp
+*.swo
+.DS_Store
+djangit-env/
+.ipynb_checkpoints/

@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% load helpers %}
+{% block body %}
+  <h1> This page shows the state of all objects in a commit  </h1>
+  <ul>
+  <div class="p-5" style="max-width: 600px">
+    {% object_table commit %}
+  </div>
+  {% for v_list in commit.version_sets.values %}
+    {% for v in v_list %}
+      {% object_table v %}
+    {% endfor %}
+  {% endfor %}
+{% endblock %}

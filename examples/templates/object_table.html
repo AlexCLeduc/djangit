@@ -1,0 +1,15 @@
+  <div>
+  <div class="h3">
+    {{model_name}}
+  </div>
+  <table class="table">
+    <tbody>
+      {% for header, value in headers_and_values %}
+      <tr>
+        <th> {{header}} </th>
+        <td> {{value}} </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <div>

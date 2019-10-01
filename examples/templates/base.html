@@ -1,0 +1,18 @@
+{% load static %}
+<html>
+  <head> 
+    <title>
+      {% block title %}
+        title
+      {% endblock title %}
+    </title>
+    <link rel="stylesheet" href="{% static "bootstrap.min.css" %}" />
+    <script src="{% static "jquery-3.2.1.min.js" %}" ></script>
+    <script src="{% static "popper.min.js" %}" ></script>
+    <script src="{% static "bootstrap.min.js" %}" ></script>
+  </head>
+  <body>
+    {% block body %}
+    {% endblock %}
+  </body>
+</html>
