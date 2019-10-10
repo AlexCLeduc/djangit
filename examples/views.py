@@ -3,7 +3,12 @@ from django.views import View
 from django.urls import path
 from django.views import generic
 
-from examples.models import Commit, Division
+from djangit.models.commit import VersionBase, VersionModelForm
+
+from .models import (
+  Commit,
+  Division,
+)
 
 # Create your views here.
 
@@ -30,6 +35,16 @@ class GitObjectLog(generic.ListView):
   template_name = "commit-view.html"
   def get_queryset(self,commit_pk):
     import IPython; IPython.embed()
+
+
+class DivisionVersionForm(VersionModelForm):
+  class Meta:
+    model= Division
+    fields= [
+      'name',
+      'tags',
+    ]
+
 
 urlpatterns = [
   path("commit/<int:commit_pk>/", ViewCommit.as_view(), name="view-commit"),

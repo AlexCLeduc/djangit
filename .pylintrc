@@ -1,0 +1,24 @@
+[FORMAT]
+indent-string='  '
+# TODO: move to 4 spaces before someone notices we're using 2
+
+[MESSAGES CONTROL]
+
+#C0326: exactly one space after comma
+#CO111: docstrings for defs and classes
+#C0301: line too long 
+#C0103: constant UPPERCASE style convention
+#W0102: Dangerous default value of {} for kwarg
+#C0303: trailing whitespace
+#R0903: too few public methods (WTF ?? )
+#R0913: Too many arguments
+#R0914: Too many local vars
+  #E0710: Raising a new style class which doesn't inherit from BaseException
+#W0702: No exception type(s) specified
+#W0701: Raising a string exception
+
+disable=C0326,C0111,C0330,C0301,C0103,W0102,C0303,R0903,R0913,R0914,E0710,W0702,W0701
+
+
+[TYPECHECK]
+generated-members=objects,_meta,id,[a-zA-Z]+_set,ModelCreateForm,ModelForm

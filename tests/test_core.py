@@ -8,6 +8,9 @@ from examples.models import Division, Team, Tag, Employee, Commit
 from djangit.utils import LockedInformationException
 
 
+def get_refreshed(model_inst):
+  # refresh_from_db() does not work properly on instance that are copied, it impacts copies/originals and populates false data
+  return model_inst.__class__.objects.get(pk=model_inst.pk)
 
 
 class BasicTestCase(TestCase):
@@ -16,51 +19,6 @@ class BasicTestCase(TestCase):
   # def setUpTestData(cls):
   #   create_data()
 
-
-  @skip("old")
-  def test_stuff(self):
-
-    div = Division.create_initial(name="division")
-    tm1 = Team.create_initial(name="team1", division=div)
-    tm2 = Team.create_initial(name="team2", division=div)
-    e1 = Employee.create_initial(name="emp1",team=tm1)
-    e2 = Employee.create_initial(name="emp2",team=tm1)
-    e3 = Employee.create_initial(name="emp3",team=tm2)
-
-    tg1 = Tag.create_initial(name="gets stuff done")
-    tg2 = Tag.create_initial(name="new")
-
-    tm1.tags.add(tg1)
-    e3.tags.add(tg2)
-
-    # create initial versions
-    for obj in (div, tm1, tm2, e1, e2, e3, tg1, tg2 ):
-      create_initial_version(obj)
-      self.assertEqual(obj.versions.count(), 1)
-
-    tm1_v0 = tm1.versions.first()
-    tm1.name = "new team 1 name"
-    tm1.save()
-    tm1.tags.add(tg2)
-    tm1.tags.remove(tg1)
-
-    tm1_v1 = save_instance_and_create_version(tm1, tm1_v0)
-
-    self.assertNotEqual(tm1_v1, tm1_v0)
-    self.assertNotEqual(tm1_v1.name, tm1_v0.name)
-    self.assertNotEqual(tm1_v1.tags, tm1_v0.tags)
-    self.assertEqual(tm1_v0.division, tm1_v1.division)
-
-
-    tm1.name = "even newer team 1 name"
-    tm1.save()
-    tm1_v2 = save_instance_and_create_version(tm1, tm1_v1)
-    self.assertNotEqual(tm1_v2, tm1_v1)
-    self.assertNotEqual(tm1_v2.name, tm1_v1.name)
-    self.assertEqual(tm1_v2.tags, tm1_v1.tags)
-    self.assertEqual(tm1_v2.division, tm1_v1.division)
-
-    
 
   def test_commit(self):
     c0 = Commit.objects.create()
@@ -172,3 +130,95 @@ class BasicTestCase(TestCase):
       c2_b.relevant_history_with_respect_to(division_v0.eternal),
       [c1,c0]
     )
+
+  def test_save_or_create(self):
+
+    c0 = Commit.objects.create()
+
+    division_v0 = Division.create_initial(
+      name="division1",
+    )
+    
+    c0._add_versions([division_v0])
+    c0.commit()
+    division_v0.refresh_from_db()
+    c0.refresh_from_db()
+
+
+    division_v0.name="division one"
+    division_v1 = division_v0.save_or_create()
+
+    division_v0.refresh_from_db()
+
+    self.assertEqual(division_v0.name,"division1")
+    self.assertEqual(division_v1.name,"division one")
+    self.assertNotEqual(division_v1.pk, division_v0.pk)
+    self.assertEqual(division_v0.eternal, division_v1.eternal)
+
+
+  def test_form(self):
+    from examples.views import DivisionVersionForm
+
+    division = Division.create_initial(
+      name="my division"
+    )
+    t1 = Tag.create_initial(name="cat1")
+    t2 = Tag.create_initial(name="cat2")
+    t3 = Tag.create_initial(name="cat3")
+
+    division.set_m2m('tags', [t1.eternal_id])
+
+    initial_pointer = division.tags
+
+    f = DivisionVersionForm(instance=division)
+    self.assertEqual(f.initial, {
+      'name':'my division',
+      'tags': [t1.eternal],
+    })
+    data = {
+      'name': 'my new division',
+      'tags': [t1.eternal_id, t2.eternal_id],
+    }
+    f_w_data = DivisionVersionForm(data, instance=division)
+    f_w_data.is_valid()
+    not_a_new_instance = f_w_data.save()
+    
+    not_a_new_instance = get_refreshed(not_a_new_instance)
+    
+    self.assertEqual(not_a_new_instance, division)
+    self.assertEqual(not_a_new_instance.name, "my new division")
+    self.assertEqual(
+      set(t.id for t in not_a_new_instance.tags.related.all()),
+      set([t1.eternal_id, t2.eternal_id])
+    )
+
+    c = Commit.objects.create()
+    c._add_versions([not_a_new_instance])
+    c.commit()
+
+
+    not_a_new_instance= get_refreshed(not_a_new_instance)
+    another_form = DivisionVersionForm({
+      'name':'even newer division name',
+      'tags':[t3.eternal_id],
+    },instance=not_a_new_instance)
+    another_form.is_valid()
+    should_be_brand_new = another_form.save()
+
+    should_be_brand_new = get_refreshed(should_be_brand_new)
+    not_a_new_instance = get_refreshed(not_a_new_instance)
+
+    self.assertNotEqual(should_be_brand_new, not_a_new_instance)
+    self.assertNotEqual(should_be_brand_new.tags, not_a_new_instance.tags)
+    self.assertEqual(
+      [t.id for t in should_be_brand_new.tags.related.all()],
+      [t3.eternal_id] 
+    )
+    self.assertEqual(should_be_brand_new.name,"even newer division name")
+
+
+    
+
+
+    
+

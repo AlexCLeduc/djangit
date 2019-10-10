@@ -1,9 +1,18 @@
-import uuid, json, datetime, types
+import uuid, json, datetime, types, copy
 from itertools import chain
 
 from django.conf import settings
 from django.db import models, transaction
-from django.forms import ModelForm
+from django.forms import (
+  Form,
+)
+from django.forms.models import (
+  ModelForm,
+  model_to_dict,
+  construct_instance,
+  ValidationError,
+  InlineForeignKeyField,
+)
 from django.contrib import admin
 from django.utils import timezone
 from django.db.models.signals import pre_save, post_save, m2m_changed
@@ -18,7 +27,12 @@ from ..utils import (
   current_time,
   LockedInformationException
 )
-from .proxy_models import ManyToManyPointerBase, create_m2m_pointer_model, HasManyToManyPointerFields, PointerField
+from .proxy_models import (
+  ManyToManyPointerBase,
+  create_m2m_pointer_model,
+  HasManyToManyPointerFields,
+  PointerField,
+)
 
 class CommitBase(models.Model):
   tracked_models = {}
@@ -235,8 +249,6 @@ class VersionBase(models.Model):
 
   def clone(self):
     """returns unsaved child version that can be saved"""
-    # TODO: how should clones inherit and get cloned m2m linkages?
-    import copy
     clone = copy.copy(self)
     clone.checksum=None
     clone.pk = None
@@ -256,6 +268,16 @@ class VersionBase(models.Model):
   def finalize_version(self):
     self.checksum = hash_for_model_instance(self)
     super().save()
+
+  def save_or_create(self,force_new=False):
+    if self.checksum or force_new:
+      new_inst = self.clone()
+      new_inst.save()
+      return new_inst
+    else:
+      self.save()
+      return self
+
   
 
 
@@ -348,3 +370,86 @@ def create_versioning_decorator(commitModel):
     
     return wrapped
   return _add_versioning
+
+class VersionModelForm(ModelForm):
+
+  def __init__(self,*args,initial=None,**kwargs):
+    instance = kwargs['instance']
+    # TODO: filter out fields that are excluded
+    self._pointer_fields = [ f for f in instance._meta.get_fields() if isinstance(f, PointerField) ]
+    self._initial_pointer_values = { #store now to ensure they don't get overwritten by form
+      f.name : getattr(instance, f.name)
+      for f in self._pointer_fields
+    }
+    pointer_initials = {
+      f.name : model_to_dict( getattr(instance, f.name) )['related']
+      for f in self._pointer_fields
+      if getattr(instance, f.name)
+    }
+    if initial:
+      pointer_initials.update(initial)
+    super().__init__(*args,initial=pointer_initials,**kwargs)
+
+
+  def _post_clean(self):
+    # TODO: find a way to not copy-paste and override private method...
+    # the only we change is excluding pointer-fields from validation
+    opts = self._meta
+
+    exclude = self._get_validation_exclusions() + [f.name for f in self._pointer_fields ]
+
+    # Foreign Keys being used to represent inline relationships
+    # are excluded from basic field value validation. This is for two
+    # reasons: firstly, the value may not be supplied (#12507; the
+    # case of providing new values to the admin); secondly the
+    # object being referred to may not yet fully exist (#12749).
+    # However, these fields *must* be included in uniqueness checks,
+    # so this can't be part of _get_validation_exclusions().
+    for name, field in self.fields.items():
+      if isinstance(field, InlineForeignKeyField):
+        exclude.append(name)
+
+    try:
+      construct_excludes = opts.exclude + exclude if opts.exclude else exclude
+      self.instance = construct_instance(self, self.instance, opts.fields, construct_excludes)
+    except ValidationError as e:
+      self._update_errors(e)
+
+    try:
+      self.instance.full_clean(exclude=exclude, validate_unique=False)
+    except ValidationError as e:
+      self._update_errors(e)
+
+    # Validate uniqueness if needed.
+    if self._validate_unique:
+      self.validate_unique()
+
+  def save(self,*args,**kwargs):
+    with transaction.atomic():
+
+      # at this point, _post_clean has written form-data onto self.instance
+
+      for f in self._pointer_fields:
+        if self.data[f.name]:
+
+          new_data = self.data[f.name]
+
+          existing_pointer_record = self._initial_pointer_values[f.name]
+          if existing_pointer_record:
+            new_pointer_record = existing_pointer_record.save_or_create(new_data)
+          else:
+            # started from empty relation, create new pointer
+            pointer_model = f.related_model
+            new_pointer_record = pointer_model.create(new_data)
+
+        else:
+          # form was submitted with empty m2m set
+          # VersionModel's represent empty relations by a null pointer record
+          new_pointer_record = None
+        
+        setattr(self.instance, f.name, new_pointer_record)
+
+
+      possibly_new_instance = self.instance.save_or_create()
+      return possibly_new_instance
+  
