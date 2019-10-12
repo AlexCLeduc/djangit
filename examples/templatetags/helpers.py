@@ -4,7 +4,7 @@ from django.template.defaultfilters import date
 
 from django_template_block_args import register_composed_template_with_blockargs
 
-from djangit.models import PointerField
+from djangit.models import _RealPointerField
 
 from ..models import Commit
 
@@ -12,7 +12,7 @@ from ..models import Commit
 register = template.Library()
 
 def get_field_display(obj,field):
-  if isinstance(field, PointerField) and getattr(obj,field.name):
+  if isinstance(field, _RealPointerField) and getattr(obj,field.name):
     return ",".join( obj.__str__() for obj in getattr(obj,field.name).related.all() )
   if isinstance(field, ForeignKey):
     val = getattr(obj,field.name,None)

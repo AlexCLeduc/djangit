@@ -2,6 +2,7 @@ import uuid, json, datetime, types, copy
 from itertools import chain
 
 from django.conf import settings
+from django.db.models.base import ModelBase
 from django.db import models, transaction
 from django.forms import (
   Form,
@@ -29,9 +30,10 @@ from ..utils import (
 )
 from .proxy_models import (
   ManyToManyPointerBase,
-  create_m2m_pointer_model,
+  m2m_pointer_model_factory,
   HasManyToManyPointerFields,
   PointerField,
+  _RealPointerField,
 )
 
 class CommitBase(models.Model):
@@ -75,7 +77,7 @@ class CommitBase(models.Model):
       versions is a list of versions OR their eternal objects
     """
     eternals = [
-      v.eternal if isinstance(v, VersionBase) else v
+      v.eternal if isinstance(v, VersionedModel) else v
       for v in versions_or_eternals
     ]
     by_class = full_group_by(eternals, lambda e: e._version_class)
@@ -165,7 +167,7 @@ class CommitBase(models.Model):
         if not v.checksum:
           v.finalize_version()
           for field in v._meta.fields:
-            if isinstance(field, PointerField):
+            if isinstance(field, _RealPointerField):
               pointer = getattr(v,field.name)
               if pointer and not pointer.checksum:
                 pointer.finalize()
@@ -230,9 +232,84 @@ class CommitBase(models.Model):
     ]
     return relevant_commits
 
+class VersionMeta(ModelBase):
+  """
+    this meta does 3 primary thing
+
+    1. it creates the eternal model class
+    2. it registers the add and remove many-to-many relations against the commit model
+    3. it maps 'fake' pointer fields used by consumers to and adds convenient accessors  
+      * this also involves creating pointer-model classes
+  """
+  def __new__(cls, cls_name, bases, cls_attrs, **kwargs):
+
+    # TODO: 
+    # 1. check whether this works when there are pointer-fields in an abtract parent. 
+
+    module = cls_attrs.get('__module__')
+    commit_model = cls_attrs.get('commit_model')
+
+    fake_pointer_fields = {
+      attr_name : attr_value
+      for (attr_name, attr_value) in cls_attrs.items()
+      if isinstance(attr_value, PointerField)
+    }
+
+    #replace 'fake' pointer fields with the real foreign keys
+    for (name, fake_field) in fake_pointer_fields.items():
+      pointer_model = m2m_pointer_model_factory(fake_field.pointed_model)
+      real_field = _RealPointerField(pointer_model, null=True, on_delete=models.SET_NULL)
+      cls_attrs[name] = real_field
 
 
-class VersionBase(models.Model):
+    #actually create the class:
+    new_cls = super().__new__(cls, cls_name, bases, cls_attrs, **kwargs )
+
+
+    if new_cls._meta.abstract:
+      # we dont create eternal models or create any commit-relations for abstract classes
+      return new_cls
+    
+    # create eternal model
+    # eternal class' only purpose is to add an auto-incrementing unique 'eternal_id' value to each version table
+    # it seems easier/more orm-friendly to create a model for it than to allow joins on an arbitrary int column and hook it up to a legit DB sequence
+    eternal_cls = type(
+      f"Eternal{cls_name}",
+      (models.Model,),
+      dict(
+        # _version_class=version_model_cls,
+        __module__=module,
+      )
+    )
+
+    models.ForeignKey(
+      eternal_cls,
+      on_delete=models.CASCADE,
+    ).contribute_to_class(new_cls,'eternal')
+    new_cls._eternal_cls = eternal_cls
+    eternal_cls._version_class = new_cls
+
+
+    # add m2m : 'added in commits'
+    models.ManyToManyField(
+      new_cls,
+      related_name=f"added_in"
+    ).contribute_to_class(commit_model, commit_model._add_attr_name_for_version_cls(new_cls) )
+      
+    # add m2m : 'removed in commits'
+    # note that we use the eternal one for removals
+    models.ManyToManyField(
+      eternal_cls,
+      related_name="removed_in",
+    ).contribute_to_class(commit_model, commit_model._rm_attr_name_for_version_cls(new_cls))
+
+    commit_model.tracked_models[new_cls.__name__.lower()] = new_cls
+
+    return new_cls
+
+
+
+class VersionedModel(models.Model, HasManyToManyPointerFields, metaclass=VersionMeta):
   class Meta:
     abstract = True
 
@@ -279,86 +356,12 @@ class VersionBase(models.Model):
       return self
 
   
-
-
-
-def create_version_parent(commit_model=None):
-  """
-    creates the abstract version model that all version classes must inherit from
-  """
-  if not commit_model:
-    raise Exception("must provide commit_model kwarg")
-
-
-  class Meta:
-    abstract=True
-
-  cls_attrs = dict(
-    __module__=commit_model.__module__,
-    _comit_model=commit_model,
-    Meta=Meta,
-  )
-
-  cls = type(
-    f"{commit_model.__name__}Version",
-    (VersionBase, HasManyToManyPointerFields),
-    cls_attrs,
-  )
-
-  return cls
-
-
-def create_versioning_decorator(commitModel):
-  def _add_versioning(create_m2m_pointer=False):
-    def wrapped(version_model_cls):
-      # eternal class' only purpose is to add an auto-incrementing unique 'eternal_id' value to each version table
-      # it seems easier/more orm-friendly to create a model for it than to allow joins on an arbitrary int column and hook it up to a legit DB sequence
-      eternal_cls = type(
-        f"Eternal{version_model_cls.__name__}",
-        (models.Model,),
-        dict(
-          _version_class=version_model_cls,
-          __module__=version_model_cls.__module__,
-        )
-      )
-
-      version_model_cls._eternal_cls = eternal_cls
-      
-      models.ForeignKey(
-        eternal_cls,
-        on_delete=models.CASCADE,
-      ).contribute_to_class(version_model_cls,'eternal')
-
-      # add m2m : 'added in commits'
-      models.ManyToManyField(
-        version_model_cls,
-        related_name=f"added_in"
-      ).contribute_to_class(commitModel, commitModel._add_attr_name_for_version_cls(version_model_cls) )
-      
-      # add m2m : 'removed in commits'
-      # note that we use the eternal one for removals
-      models.ManyToManyField(
-        eternal_cls,
-        related_name="removed_in",
-      ).contribute_to_class(commitModel, commitModel._rm_attr_name_for_version_cls(version_model_cls))
-
-      commitModel.tracked_models[version_model_cls.__name__.lower()] = version_model_cls
-
-      if create_m2m_pointer:
-        version_model_cls._m2m_pointer_model = create_m2m_pointer_model(version_model_cls)
-
-
-      return version_model_cls
-    
-    return wrapped
-  return _add_versioning
-
 class VersionModelForm(ModelForm):
 
   def __init__(self,*args,initial=None,**kwargs):
     instance = kwargs['instance']
     # TODO: filter out fields that are excluded
-    self._pointer_fields = [ f for f in instance._meta.get_fields() if isinstance(f, PointerField) ]
+    self._pointer_fields = [ f for f in instance._meta.get_fields() if isinstance(f, _RealPointerField) ]
     self._initial_pointer_values = { #store now to ensure they don't get overwritten by form
       f.name : getattr(instance, f.name)
       for f in self._pointer_fields
@@ -435,3 +438,4 @@ class VersionModelForm(ModelForm):
       possibly_new_instance = self.instance.save_or_create()
       return possibly_new_instance
   
+
