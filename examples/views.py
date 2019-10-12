@@ -1,7 +1,8 @@
 from django.shortcuts import render
+from django.http.response import HttpResponseRedirect
 from django.views import View
-from django.urls import path
 from django.views import generic
+from django.urls import path, reverse
 
 from djangit.models.commit import VersionBase, VersionModelForm
 
@@ -46,8 +47,25 @@ class DivisionVersionForm(VersionModelForm):
     ]
 
 
+class EditDivision(generic.FormView):
+  template_name="edit.html"
+  form_class = DivisionVersionForm
+  def get_form_kwargs(self,*args,**kwargs):
+    division = Division.objects.get(pk=self.kwargs.get("division_pk"))
+    return { 
+      **super().get_form_kwargs(*args,**kwargs),
+      "instance": division,
+    }
+
+  def form_valid(self,form):
+    possibly_new_inst = form.save()
+    return HttpResponseRedirect( reverse('add-division-version', args=( possibly_new_inst.pk, )))
+    
+
+
 urlpatterns = [
   path("commit/<int:commit_pk>/", ViewCommit.as_view(), name="view-commit"),
   path("commit/<int:commit_pk>/history/",GitLog.as_view(), name="git-log"),
   path("commit/<int:commit_pk>/<str:model>/<int:eternal_pk>/history/", GitLog.as_view(), name="git-object-log"),
+  path("add_version/division/<int:division_pk>",EditDivision.as_view(),name="add-division-version"),
 ]

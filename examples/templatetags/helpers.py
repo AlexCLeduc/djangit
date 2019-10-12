@@ -2,6 +2,8 @@ from django import template
 from django.db.models import CharField, TextField, ForeignKey
 from django.template.defaultfilters import date
 
+from django_template_block_args import register_composed_template_with_blockargs
+
 from djangit.models import PointerField
 
 from ..models import Commit
@@ -37,3 +39,17 @@ def object_table(obj):
     ]
   }
 
+
+
+@register_composed_template_with_blockargs(
+  register,
+  'form-field.html',
+  block_names=(
+    "field_header",
+    "field_input",
+  )
+)
+def standard_form_field(field_id=None):
+  return {
+    "field_id": field_id,
+  }

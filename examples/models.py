@@ -17,10 +17,16 @@ add_versioning = create_versioning_decorator(Commit)
 class Tag(version_model):
   name = models.TextField()
 
+  def __str__(self):
+    return self.name  
+
 @add_versioning()
 class Division(version_model):
   name = models.TextField()
   tags = PointerField(Tag._m2m_pointer_model, null=True, on_delete=models.SET_NULL)
+
+  def __str__(self):
+    return self.name
 
 @add_versioning()
 class Team(version_model):
@@ -32,6 +38,10 @@ class Team(version_model):
   )
   tags = PointerField(Tag._m2m_pointer_model, null=True, on_delete=models.SET_NULL)
 
+
+  def __str__(self):
+    return self.name
+
 @add_versioning
 class Employee(version_model):
   name=models.TextField()
@@ -42,3 +52,7 @@ class Employee(version_model):
     on_delete=models.PROTECT,
   )
   tags = PointerField(Tag._m2m_pointer_model, null=True, on_delete=models.SET_NULL)
+
+
+  def __str__(self):
+    return self.name
