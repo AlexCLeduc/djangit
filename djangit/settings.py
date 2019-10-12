@@ -76,18 +76,26 @@ WSGI_APPLICATION = 'djangit.wsgi.application'
 
 # Database
 # https://docs.djangoproject.com/en/2.2/ref/settings/#databases
-
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'djangit-example',
-        'USER': '',
-        'PASSWORD': '4mvhr9une0fu2f0ur2ifn3nsy62',
-        'PORT': '5432',
-        'HOST': '127.0.0.1',
-        'TEST': { "NAME": "test-djangit-example" }
+if os.getenv('CIRCLECI'):
+    # who wants to install postgres in CI ? :)  
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': os.path.join(BASE_DIR, 'db.sqlite3'),
+        }
     }
-}
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': 'djangit-example',
+            'USER': '',
+            'PASSWORD': '4mvhr9une0fu2f0ur2ifn3nsy62',
+            'PORT': '5432',
+            'HOST': '127.0.0.1',
+            'TEST': { "NAME": "test-djangit-example" }
+        }
+    }
 
 
 # Password validation
