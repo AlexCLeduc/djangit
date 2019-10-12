@@ -307,24 +307,6 @@ def create_version_parent(commit_model=None):
 
   return cls
 
-"""
-
-  TODO:
-
-  - helpful constraint utils
-    - e.g. emulating a 1-1 or 1-many relationship on a per-commit basis
-      - an employee 
-
-
-
-  generating eternal tables ??
-
-    - only purpose is to play well with django
-      - uses DB sequences out of the box
-      - versions have FKs to eternal tables
-    - can be created via sub-class hook of ParentVersion
-
-"""
 
 def create_versioning_decorator(commitModel):
   def _add_versioning(create_m2m_pointer=False):
