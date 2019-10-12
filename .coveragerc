@@ -1,0 +1,21 @@
+[run]
+omit =
+    */migrations/*
+    tests/*
+    htmlcov/
+    $VIRTUAL_ENV
+
+plugins =
+    # allows coverage for templates
+    django_coverage_plugin
+
+
+
+# How to generate coverage:
+# 1. pip install coverage django_coverage_plugin (decided not to add to requirements because this wont happen in prod or very often)
+# 2. coverage run ./manage.py test --keepdb tests
+#   - this will generate a .coverage file
+# 3. coverage html
+#    - this generates a bunch of html in htmlcov/
+# 4. python -m http.server 1337
+# 5. browse localhost:1337/htmlcov

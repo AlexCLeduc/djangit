@@ -6,3 +6,5 @@ __pycache__
 .DS_Store
 djangit-env/
 .ipynb_checkpoints/
+.coverage
+htmlcov/
