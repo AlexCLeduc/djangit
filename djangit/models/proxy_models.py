@@ -29,11 +29,18 @@ class HasManyToManyPointerFields():
     return new_pointer_obj
 
 
-class PointerField(models.ForeignKey):
+class _RealPointerField(models.ForeignKey):
   def formfield(self,**kwargs):
     m2m_model_field = self.remote_field.model._meta.get_field('related')
     return m2m_model_field.formfield()
 
+
+class PointerField:
+  def __init__(self,target_model, **kwargs):
+    self.pointed_model = target_model
+    self.kwargs = kwargs
+
+  
 class ManyToManyPointerBase(models.Model):
   """
     the m2m field will always be called related
@@ -79,14 +86,20 @@ class ManyToManyPointerBase(models.Model):
     super().save()
 
 
-def create_m2m_pointer_model(to_version_model):
-  return type(
-    f"{to_version_model.__name__}_ManyToManyPointer",
-    (ManyToManyPointerBase, ),
-    dict(
-      related=models.ManyToManyField(to_version_model._eternal_cls),
-      __module__=to_version_model.__module__,
+# Note that if two different version-models have m2m pointers 
+# to the same target_model, their fields are FKs of the same model
+m2m_pointer_model_registry = {}
+def m2m_pointer_model_factory(target_model):
+  if target_model not in m2m_pointer_model_registry:
+    m2m_pointer_model_registry[target_model] = type(
+      f"{target_model.__name__}_ManyToManyPointer",
+      (ManyToManyPointerBase, ),
+      dict(
+        related=models.ManyToManyField(target_model),
+        __module__=target_model.__module__,
+      )
     )
-  )
+
+  return m2m_pointer_model_registry[target_model]
 
   

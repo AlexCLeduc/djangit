@@ -48,26 +48,25 @@ class BasicTestCase(TestCase):
 
 
     
-    t1 =  Tag.create_initial(name="category 1")
-    t2 = Tag.create_initial(name="category 2")
+    t1 =  Tag.objects.create(name="category 1")
+    t2 = Tag.objects.create(name="category 2")
     division2_v0 = Division.create_initial(
       name="division 2",
     )
     division3_v0 = Division.create_initial(
       name="division 3",
     )
-    division3_v0.set_m2m('tags', [t1.eternal_id,t2.eternal_id])
+    division3_v0.set_m2m('tags', [t1.id,t2.id])
 
     division3_v0.refresh_from_db()
     self.assertTrue(division3_v0.tags)
     self.assertEqual(
       set(division3_v0.tags.related.all()),
-      set([t1.eternal,t2.eternal])
+      set([t1,t2])
     )
 
     c1 = Commit.objects.create(parent_commit=c0)
     c1._add_versions([ division_v1 ])
-    c1._add_versions([ t1, t2 ])
     c1.commit()
 
     with self.assertRaises(LockedInformationException):
@@ -78,10 +77,6 @@ class BasicTestCase(TestCase):
       division_v1.save()
     
     
-    with self.assertRaises(LockedInformationException):
-      t1.refresh_from_db()
-      t1.save()
-
     c2 = Commit.objects.create(parent_commit=c1)
     c2._add_versions([division2_v0, division3_v0])
     c2._remove_objects([division_v0.eternal])
@@ -162,22 +157,22 @@ class BasicTestCase(TestCase):
     division = Division.create_initial(
       name="my division"
     )
-    t1 = Tag.create_initial(name="cat1")
-    t2 = Tag.create_initial(name="cat2")
-    t3 = Tag.create_initial(name="cat3")
+    t1 = Tag.objects.create(name="cat1")
+    t2 = Tag.objects.create(name="cat2")
+    t3 = Tag.objects.create(name="cat3")
 
-    division.set_m2m('tags', [t1.eternal_id])
+    division.set_m2m('tags', [t1.id])
 
     initial_pointer = division.tags
 
     f = DivisionVersionForm(instance=division)
     self.assertEqual(f.initial, {
       'name':'my division',
-      'tags': [t1.eternal],
+      'tags': [t1],
     })
     data = {
       'name': 'my new division',
-      'tags': [t1.eternal_id, t2.eternal_id],
+      'tags': [t1.id, t2.id],
     }
     f_w_data = DivisionVersionForm(data, instance=division)
     f_w_data.is_valid()
@@ -189,7 +184,7 @@ class BasicTestCase(TestCase):
     self.assertEqual(not_a_new_instance.name, "my new division")
     self.assertEqual(
       set(t.id for t in not_a_new_instance.tags.related.all()),
-      set([t1.eternal_id, t2.eternal_id])
+      set([t1.id, t2.id])
     )
 
     c = Commit.objects.create()
@@ -200,7 +195,7 @@ class BasicTestCase(TestCase):
     not_a_new_instance= get_refreshed(not_a_new_instance)
     another_form = DivisionVersionForm({
       'name':'even newer division name',
-      'tags':[t3.eternal_id],
+      'tags':[t3.id],
     },instance=not_a_new_instance)
     another_form.is_valid()
     should_be_brand_new = another_form.save()
@@ -212,7 +207,7 @@ class BasicTestCase(TestCase):
     self.assertNotEqual(should_be_brand_new.tags, not_a_new_instance.tags)
     self.assertEqual(
       [t.id for t in should_be_brand_new.tags.related.all()],
-      [t3.eternal_id] 
+      [t3.id] 
     )
     self.assertEqual(should_be_brand_new.name,"even newer division name")
 

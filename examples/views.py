@@ -4,7 +4,7 @@ from django.views import View
 from django.views import generic
 from django.urls import path, reverse
 
-from djangit.models.commit import VersionBase, VersionModelForm
+from djangit.models.commit import VersionModelForm
 
 from .models import (
   Commit,

@@ -1,5 +1,6 @@
 from django.db import models
-from djangit.models.commit import create_version_parent, CommitBase, create_versioning_decorator, PointerField
+# from djangit.models.commit import create_version_parent, CommitBase, create_versioning_decorator, PointerField
+from djangit.models.commit import VersionedModel, CommitBase, PointerField
 
 
 class Commit(CommitBase):
@@ -8,42 +9,41 @@ class Commit(CommitBase):
   )
 
 
-version_model = create_version_parent(Commit)
-add_versioning = create_versioning_decorator(Commit)
+# version_model = create_version_parent(Commit)
+# add_versioning = create_versioning_decorator(Commit)
 
 
 
-@add_versioning(create_m2m_pointer=True)
-class Tag(version_model):
+class Tag(models.Model):
   name = models.TextField()
 
   def __str__(self):
     return self.name  
 
-@add_versioning()
-class Division(version_model):
+class Division(VersionedModel):
+  commit_model=Commit
   name = models.TextField()
-  tags = PointerField(Tag._m2m_pointer_model, null=True, on_delete=models.SET_NULL)
+  tags = PointerField(Tag)
 
   def __str__(self):
     return self.name
 
-@add_versioning()
-class Team(version_model):
+class Team(VersionedModel):
+  commit_model=Commit
   name = models.TextField()
   division = models.ForeignKey(
     "examples.EternalDivision",
     null=False,
     on_delete=models.PROTECT
   )
-  tags = PointerField(Tag._m2m_pointer_model, null=True, on_delete=models.SET_NULL)
+  tags = PointerField(Tag)
 
 
   def __str__(self):
     return self.name
 
-@add_versioning
-class Employee(version_model):
+class Employee(VersionedModel):
+  commit_model=Commit
   name=models.TextField()
   team = models.ForeignKey(
     "examples.Team",
@@ -51,7 +51,7 @@ class Employee(version_model):
     related_name="employees",
     on_delete=models.PROTECT,
   )
-  tags = PointerField(Tag._m2m_pointer_model, null=True, on_delete=models.SET_NULL)
+  tags = PointerField(Tag)
 
 
   def __str__(self):
