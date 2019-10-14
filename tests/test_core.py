@@ -216,7 +216,7 @@ class BasicTestCase(TestCase):
     c = Commit.objects.create()
 
     self.assertEqual(c.version_sets(), {
-      Tag: {},
+      Employee: {},
       Division: {},
       Team: {},
     })
@@ -225,7 +225,7 @@ class BasicTestCase(TestCase):
     c._add_versions([division1_v0])
     c = get_refreshed(c)
     self.assertEqual(c.version_sets(), {
-      Tag: {},
+      Employee: {},
       Division: { division1_v0.eternal_id : division1_v0 },
       Team: {},
     })
