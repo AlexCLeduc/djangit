@@ -212,8 +212,47 @@ class BasicTestCase(TestCase):
     self.assertEqual(should_be_brand_new.name,"even newer division name")
 
 
-    
+  def test_version_set(self):
+    c = Commit.objects.create()
+
+    self.assertEqual(c.version_sets(), {
+      Tag: {},
+      Division: {},
+      Team: {},
+    })
+
+    division1_v0 = Division.create_initial(name="division1")
+    c._add_versions([division1_v0])
+    c = get_refreshed(c)
+    self.assertEqual(c.version_sets(), {
+      Tag: {},
+      Division: { division1_v0.eternal_id : division1_v0 },
+      Team: {},
+    })
 
 
-    
+    division1_v1 = division1_v0.clone()
+    division1_v1.name="division one"
+    division1_v1.save()
+
+    div2 = Division.create_initial(name="division2")
+
+    c2 = Commit.objects.create(parent_commit=c)
+    c2._add_versions([division1_v1, div2])
+    c2 = get_refreshed(c2)
+    self.assertEqual(
+      c2.version_sets()[Division],
+      { 
+        division1_v1.eternal_id : division1_v1,
+        div2.eternal_id : div2, 
+      },
+    )
+
+    c3 = Commit.objects.create(parent_commit=c2)
+    c3._remove_objects([division1_v1.eternal])
+    c3 = get_refreshed(c3)
+    self.assertEqual(
+      c3.version_sets()[Division],
+      { div2.eternal_id : div2 }
+    )
 
