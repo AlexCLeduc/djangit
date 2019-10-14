@@ -18,6 +18,8 @@ from django.contrib import admin
 from django.utils import timezone
 from django.db.models.signals import pre_save, post_save, m2m_changed
 
+from mptt.models import MPTTModel, TreeForeignKey
+
 from ..diffs import Diff, TagM2MDiff
 from ..utils import (
   full_group_by,
@@ -36,12 +38,15 @@ from .proxy_models import (
   _RealPointerField,
 )
 
-class CommitBase(models.Model):
+class CommitBase(MPTTModel):
   tracked_models = {}
   
   class Meta:
     abstract=True
     ordering = [ 'committed_at' ]
+
+  class MPTTMeta:
+    parent_attr= "parent_commit"
 
   checksum = models.CharField(
     null=True,
@@ -53,7 +58,7 @@ class CommitBase(models.Model):
   )
 
   # TODO: allow merge commits by making this m2m
-  parent_commit = models.ForeignKey(
+  parent_commit = TreeForeignKey(
     'self',
     null=True,
     on_delete=models.SET_NULL,

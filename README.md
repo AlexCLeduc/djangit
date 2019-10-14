@@ -139,22 +139,23 @@ At some point, someone is going to input classified information in a system they
     * will perform "copy on write" logic when saved()
 
 
-* We don't yet support merge commits. This means we'll need to turn the parent commit foreign key into a many-to-many relation
-  * once merge commits are working, we can figure out how to do conflict resolution
-    * conflict detection: By default, conflicts should only occur when two commits' mutually-exclusive chains contain changes to the same 'eternal-record' and the **field**
-      * presumably, we could have "conflict resolution" hooks to have custom rules. For instance, two really closely related fields that are expected to change together but change independently could present a conflict.
+* We don't yet support merging (conflict identification/resolution)
+  * conflict detection: By default, conflicts should only occur when two commits' mutually-exclusive chains contain changes to the same **field** for the same 'eternal-record' 
+    * presumably, we could have "conflict resolution" hooks to have custom rules. For instance, two really closely related fields that are expected to change together but change independently could present a conflict.
     * for a merge between 2 versions, we can present 3 forms, two readonly forms showing the contents of the 2 original versions, and another to fill in the "resolved merge"
+  * At this point, all merging will have to be based on rebase. Introducing merge commits would turn our tree into a directed acyclic graph. Implementing efficient DAG queries in sql seems like a harder problem than trees in sql (because mptt exists).
 
 
 
 
 
-## A note on performance
-
-* Since it is common to do queries of the form "get all the ancestors of this commit", and that commits identify their parent via a relation, you can end up with an indefinite amount of self-joins. That's a hell of an N+1 problem! To get around this, we should look into replacing the parent-commit foreign key with specialized structures such as [django-mptt](https://django-mptt.readthedocs.io/en/latest/index.html) or [django-treebeard](https://django-treebeard.readthedocs.io/en/latest/). A many-to-many tree lookup will also be necessary once we allow merge commits.
 
 
 ## Weird things explained
+
+### what's MPTT ?
+
+* Since it is common to do queries of the form "get all the ancestors of this commit", and that commits identify their parent via a relation, you would normally end up with one self-join query per ancestor. To get around this, we use [django-mptt](https://django-mptt.readthedocs.io/en/latest/index.html). (Note that enforcing a real tree-structure rules out merge commits)
 
 ### Eternal IDs
 
