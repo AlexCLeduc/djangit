@@ -101,32 +101,53 @@ class CommitBase(MPTTModel):
     }
 
   @property
-  def _removed_by_eternal_id(self):
+  def _eternals_removed_by_class(self):
     return {
       cls: list(getattr(self, self._rm_attr_name_for_version_cls(cls)).all())
       for (name,cls) in self.tracked_models.items()
     }
   def version_sets(self):
+    """
+      returns nested dict of the form
+      { 
+        version_class : {
+          eternal-id : version-inst
+        }
+      }
+    """
     
-    # TODO: change data-structure to avoid separate query per ancestor
-    versions_added = { **self._versions_added_by_class }
-
-    removed_eternal_ids = { **self._removed_by_eternal_id }
+    versions_added_dict = {
+      cls : {
+        v.eternal_id : v
+        for v in versions
+      } 
+      for (cls,versions) in self._versions_added_by_class.items()
+    }
 
     if self.parent_commit is None:
-      return versions_added
+      parent_versions = {
+        cls: {}
+        for cls in self.tracked_models.values()
+      }
     else:
       parent_versions = self.parent_commit.version_sets()
-      versions = {
-        cls: set( versions_added[cls] ) - set ( parent_versions[cls] )
-        for cls in self.tracked_models.values()
-      }
 
-      versions_with_remove_applied = {
-        cls: [ v for v in versions[cls] if v.eternal_id not in removed_eternal_ids ]
-        for cls in self.tracked_models.values()
-      }
-      return versions_with_remove_applied
+
+    # for any eternal-id self's added version overrides its parent's version
+    final_versions = {
+      cls : {
+        **parent_versions[cls],
+        **versions_added_dict[cls], 
+      } 
+      for cls in self.tracked_models.values()
+    }
+
+    #finally, remove the versions
+    for (cls,eternals) in self._eternals_removed_by_class.items():
+      for eternal in eternals:
+        del final_versions[cls][eternal.id]
+
+    return final_versions
 
   def _compute_hash(self):
 
