@@ -4,6 +4,7 @@ from itertools import chain
 from django.conf import settings
 from django.db.models.base import ModelBase
 from django.db import models, transaction
+from django.db.models import Q, OuterRef, Subquery, F
 from django.forms import (
   Form,
 )
@@ -106,46 +107,83 @@ class CommitBase(MPTTModel):
       cls: list(getattr(self, self._rm_attr_name_for_version_cls(cls)).all())
       for (name,cls) in self.tracked_models.items()
     }
-  def version_sets(self):
+  def version_sets(self, lazy=False):
     """
-      returns nested dict of the form
-      { 
-        version_class : {
-          eternal-id : version-inst
+      if passed lazy=True, will return dict of the form :
+
+        { version_model_cls : queryset }
+
+      otherwise, will return nested dict of the form 
+
+        { 
+          version_model_cls : { 
+            eternal_id : version_inst 
+          }
         }
-      }
-    """
-    
-    versions_added_dict = {
-      cls : {
-        v.eternal_id : v
-        for v in versions
-      } 
-      for (cls,versions) in self._versions_added_by_class.items()
-    }
 
-    if self.parent_commit is None:
-      parent_versions = {
-        cls: {}
-        for cls in self.tracked_models.values()
-      }
-    else:
-      parent_versions = self.parent_commit.version_sets()
+      conceptually, the query below gets executed as so:
+      * get the chain of commits 
+      * For each tracked model...
+        1. get all the relevant version-additions made by the commit-chain
+          * you want pairs of (version-ID, commit-generation) for each eternal ID
+          * we only care about the addition that hapenned on the 'maximal' commit (latest generation - represented by a field called level)
+            * this is because higher generation commits overwrite their ancestors' versions
+        2.  get all the relevant object-removals made by the commit-chain
+          * similar to 1., you want pairs of (eternal-IDs, commit-generation)
+        3. Now that you have the whole picture, you want to filter out all addition pairs that are overruled by removals
+          * this only happens when a removal has higher generation than the addition
+        
+    """    
+
+    commit_chain_ids = [a.id for a in self.get_ancestors()]
+    commit_chain_ids.append(self.id)
+
+    # for each tracked model, compute the inner join of its table and this commit chain
+    # we only care about the youngest (generational not necessarily chronological) version
+    # for each group of eternal IDs
+
+    final_versions = {}
+    for cls in self.tracked_models.values():
+      
+      related_additions = (
+        cls.objects
+          .filter(eternal_id=OuterRef('pk') )
+          .filter(added_in__in=commit_chain_ids)
+          .order_by('-added_in__level')
+      )
+
+      related_removals = (
+        cls._eternal_cls.objects.filter(id=OuterRef('pk'))
+          .filter(removed_in__in=commit_chain_ids)
+          .order_by('-removed_in__level')
+      )
+
+      version_ids = set( 
+        row['proper_version'] for row in (
+          cls._eternal_cls.objects
+          .annotate(proper_version=Subquery(related_additions.values('id')[:1]))
+          .annotate(addition_depth=Subquery(related_additions.values('added_in__level')[:1]))
+          .annotate(removal_depth=Subquery(related_removals.values('removed_in__level')[:1]))
+          .filter(proper_version__isnull=False)
+          .filter(
+            Q(addition_depth__gt=F('removal_depth')) | 
+            Q(removal_depth__isnull=True)
+          )
+          .values('proper_version')
+        )
+      )
 
 
-    # for any eternal-id self's added version overrides its parent's version
-    final_versions = {
-      cls : {
-        **parent_versions[cls],
-        **versions_added_dict[cls], 
-      } 
-      for cls in self.tracked_models.values()
-    }
+      # is there a way to combine this with the previous query?
+      version_qs = cls.objects.filter(id__in=version_ids)
 
-    #finally, remove the versions
-    for (cls,eternals) in self._eternals_removed_by_class.items():
-      for eternal in eternals:
-        del final_versions[cls][eternal.id]
+      if lazy:
+        final_versions[cls] = version_qs
+      else:
+        final_versions[cls] = { 
+          v.eternal_id : v
+          for v in version_qs.all()
+        }
 
     return final_versions
 
