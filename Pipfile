@@ -16,6 +16,7 @@ PyYAML = "==3.13"
 django-template-block-args = "*"
 coverage = "*"
 django-coverage-plugin = "*"
+django-mptt = "*"
 
 [requires]
 python_version = "3.7"
