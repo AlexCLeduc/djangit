@@ -256,3 +256,15 @@ class BasicTestCase(TestCase):
       { div2.eternal_id : div2 }
     )
 
+    # re-add removed version 
+    # this also tests a rare example of actually having 2 commits tied to a single version
+    c4 = Commit.objects.create(parent_commit=c3)
+    c4._add_versions([division1_v1])
+    c4 = get_refreshed(c4)
+    self.assertEqual(      
+      c4.version_sets()[Division],
+      { 
+        division1_v1.eternal_id : division1_v1,
+        div2.eternal_id : div2, 
+      }
+    )
